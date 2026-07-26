@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Happy 20th Birthday 🎂</title>
+
+<!--
+  ============================================================================
+  HOW TO RUN THIS
+  ============================================================================
+  The "blow out the candles" feature uses the microphone via the Web Audio
+  API (getUserMedia). Browsers only allow mic access in a "secure context":
+  https://, or http://localhost. Opening this file directly via file://
+  (double-click) will usually fail to request mic permission.
+
+  Run it through a local server instead, e.g. one of:
+
+    Python 3 :  python3 -m http.server 8000
+    Node.js  :  npx serve .
+    VSCode   :  "Live Server" extension
+
+  then open  http://localhost:8000/happy-birthday.html  in your browser.
+
+  If the microphone isn't allowed / available, you can still use the
+  fallback "Blow Out Candles" button below the cake.
+  ============================================================================
+-->
+
+<style>
+  /* ==========================================================================
+     DESIGN TOKENS
+     Tema: "Pesta di Waktu Senja" -- kartu undangan krem hangat mengambang di
+     atas latar indigo-plum gelap, dihidupkan dengan cahaya lilin keemasan.
+     ========================================================================== */
+  :root{
+    --ink:        #2B2138;   /* teks utama di atas kartu krem */
+    --card:       #FFF7EA;   /* krem hangat kartu undangan   */
+    --card-edge:  #F0E2C8;   /* garis tepi kartu             */
+    --bg-top:     #2A2044;   /* indigo-plum, langit malam    */
+    --bg-bottom:  #140F22;   /* nyaris hitam, dasar panggung */
+    --gold:       #E8B54D;   /* nyala lilin / aksen utama    */
+    --gold-deep:  #C98F2B;
+    --coral:      #FF6F59;   /* aksen kembang api            */
+    --teal:       #2FBF9F;   /* aksen kembang api            */
+    --pink:       #E85B9A;   /* aksen kembang api            */
+    --frosting:   #FBEAD3;
+    --cake-body:  #C97B5A;
+    --cake-body-2:#B96A49;
+
+    --font-display: "Fraunces", Georgia, serif;
+    --font-body:    "Plus Jakarta Sans", system-ui, sans-serif;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body{
+    margin:0; padding:0; height:100%;
+    font-family: var(--font-body);
+    color: var(--ink);
+    overflow-x: hidden;
+  }
+
+  body{
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+    background: radial-gradient(120% 140% at 50% -10%, var(--bg-top) 0%, var(--bg-bottom) 70%);
+    transition: background 1.4s ease;
+    position: relative;
+  }
+
+  /* Bintang-bintang latar belakang, redup di awal, menyala saat lilin padam */
+  #stars{
+    position: fixed; inset: 0;
+    pointer-events: none;
+    opacity: 0.25;
+    transition: opacity 1.2s ease;
+    background-image:
+      radial-gradient(1.5px 1.5px at 10% 20%, #fff, transparent),
+      radial-gradient(1.5px 1.5px at 80% 10%, #fff, transparent),
+      radial-gradient(1px 1px at 60% 70%, #fff, transparent),
+      radial-gradient(1.5px 1.5px at 30% 80%, #fff, transparent),
+      radial-gradient(1px 1px at 90% 60%, #fff, transparent),
+      radial-gradient(1.5px 1.5px at 45% 35%, #fff, transparent),
+      radial-gradient(1px 1px at 15% 55%, #fff, transparent);
+    background-repeat: no-repeat;
+  }
+  body.party #stars{ opacity: 0.9; }
+
+  /* Canvas kembang api: full-screen, DI DEPAN kartu, tak tersentuh mouse
+     (z-index lebih tinggi dari .card supaya ledakan terlihat menutupi kartu) */
+  #fireworks{
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* ==========================================================================
+     KARTU UCAPAN
+     ========================================================================== */
+  .card{
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 480px;
+    background: var(--card);
+    border: 1px solid var(--card-edge);
+    border-radius: 28px;
+    padding: 40px 32px 36px;
+    text-align: center;
+    box-shadow:
+      0 30px 60px -20px rgba(0,0,0,0.55),
+      0 0 0 1px rgba(255,255,255,0.02);
+    transition: transform 0.6s cubic-bezier(.2,.9,.3,1.2), box-shadow 0.6s ease;
+  }
+
+  .eyebrow{
+    display: inline-block;
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--gold-deep);
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+
+  h1{
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-weight: 600;
+    font-size: clamp(28px, 6vw, 40px);
+    line-height: 1.15;
+    margin: 0 0 6px;
+  }
+  h1 em{
+    font-style: italic;
+    color: var(--cake-body);
+  }
+
+  .subtitle{
+    font-size: 15px;
+    color: #6B5F80;
+    margin: 0 0 28px;
+    line-height: 1.5;
+  }
+
+  /* ==========================================================================
+     KUE ULANG TAHUN -- murni HTML/CSS
+     ========================================================================== */
+  .cake-wrap{
+    position: relative;
+    display: flex;
+    justify-content: center;
+    margin: 8px auto 20px;
+    height: 190px;
+  }
+
+  .cake{
+    position: absolute;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .plate{
+    width: 190px;
+    height: 14px;
+    background: linear-gradient(180deg, #EADFCB, #D8C9A8);
+    border-radius: 50%;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.18);
+  }
+
+  .tier{
+    width: 160px;
+    height: 54px;
+    background: linear-gradient(180deg, var(--cake-body), var(--cake-body-2));
+    border-radius: 8px 8px 4px 4px;
+    position: relative;
+    margin-top: -3px;
+    box-shadow: inset 0 -6px 10px rgba(0,0,0,0.15);
+  }
+  .tier.top{ width: 118px; height: 46px; }
+
+  /* Frosting bergelombang di tepi atas setiap tingkat kue */
+  .frosting{
+    position: absolute;
+    top: -12px; left: 0; right: 0;
+    height: 20px;
+    background: var(--frosting);
+    -webkit-mask-image: radial-gradient(circle at 8px 8px, black 8px, transparent 8.5px);
+    -webkit-mask-size: 16px 16px;
+    -webkit-mask-repeat: repeat-x;
+    mask-image: radial-gradient(circle at 8px 8px, black 8px, transparent 8.5px);
+    mask-size: 16px 16px;
+    mask-repeat: repeat-x;
+    border-radius: 6px;
+  }
+
+  .drip{
+    position:absolute; top:-2px; width:10px; height:22px;
+    background: var(--frosting); border-radius: 0 0 50% 50%;
+  }
+
+  .candles{
+    position: absolute;
+    top: -78px;
+    display: flex;
+    gap: 16px;
+  }
+
+  .candle{
+    width: 8px;
+    height: 44px;
+    background: repeating-linear-gradient(180deg, #FDF6E3 0 6px, #F3D9A0 6px 12px);
+    border-radius: 2px;
+    position: relative;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+  }
+  .candle:nth-child(2){ height: 54px; }
+  .candle:nth-child(4){ height: 54px; }
+
+  .wick{
+    position: absolute;
+    top: -6px; left: 50%;
+    width: 2px; height: 6px;
+    background: #3A2E22;
+    transform: translateX(-50%);
+  }
+
+  /* Api lilin -- dua lapis (inti + luar) untuk kesan menyala, dengan flicker */
+  .flame{
+    position: absolute;
+    bottom: 100%; left: 50%;
+    width: 14px; height: 22px;
+    transform: translateX(-50%);
+    transform-origin: bottom center;
+    pointer-events: none;
+  }
+  .flame::before, .flame::after{
+    content: "";
+    position: absolute;
+    left: 50%; bottom: 0;
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    transform: translateX(-50%);
+  }
+  .flame::before{
+    width: 14px; height: 22px;
+    background: radial-gradient(circle at 50% 70%, #FFF4CC 0%, var(--gold) 45%, var(--coral) 95%);
+    filter: blur(0.2px);
+    animation: flicker-outer 0.42s ease-in-out infinite alternate;
+    box-shadow: 0 0 12px 2px rgba(232,181,77,0.7);
+  }
+  .flame::after{
+    width: 6px; height: 11px;
+    background: #FFFBEF;
+    animation: flicker-inner 0.38s ease-in-out infinite alternate;
+  }
+  /* Variasi delay tiap lilin supaya nyala tidak seragam / lebih hidup */
+  .candle:nth-child(1) .flame::before{ animation-delay: 0s; }
+  .candle:nth-child(2) .flame::before{ animation-delay: .1s; }
+  .candle:nth-child(3) .flame::before{ animation-delay: .05s; }
+  .candle:nth-child(4) .flame::before{ animation-delay: .15s; }
+  .candle:nth-child(5) .flame::before{ animation-delay: .08s; }
+
+  @keyframes flicker-outer{
+    0%   { transform: translateX(-50%) rotate(-4deg) scale(1); opacity: 1; }
+    50%  { transform: translateX(-48%) rotate(3deg) scale(1.08); opacity: 0.92; }
+    100% { transform: translateX(-52%) rotate(-2deg) scale(0.96); opacity: 1; }
+  }
+  @keyframes flicker-inner{
+    0%   { transform: translateX(-50%) scaleY(1); }
+    50%  { transform: translateX(-46%) scaleY(1.15); }
+    100% { transform: translateX(-54%) scaleY(0.9); }
+  }
+
+  /* Asap tipis muncul begitu lilin padam */
+  .smoke{
+    position: absolute;
+    bottom: 100%; left: 50%;
+    width: 3px; height: 3px;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.5);
+    border-radius: 50%;
+    opacity: 0;
+  }
+  .candle.out .flame{ display: none; }
+  .candle.out .smoke{ animation: smoke-rise 1.4s ease-out forwards; }
+  @keyframes smoke-rise{
+    0%   { opacity: 0.55; transform: translateX(-50%) translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-40px) scale(6); }
+  }
+
+  /* ==========================================================================
+     KONTROL & PESAN
+     ========================================================================== */
+  .status{
+    font-size: 13.5px;
+    min-height: 18px;
+    color: #8A7DA0;
+    margin-bottom: 16px;
+    transition: color 0.3s ease;
+  }
+  .status.active{ color: var(--gold-deep); font-weight: 600; }
+
+  .actions{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .mic-btn, .blow-btn{
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 14.5px;
+    border: none;
+    cursor: pointer;
+    border-radius: 999px;
+    padding: 13px 26px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.3s ease;
+  }
+  .mic-btn:active, .blow-btn:active{ transform: scale(0.96); }
+
+  .mic-btn{
+    background: var(--ink);
+    color: var(--card);
+    box-shadow: 0 8px 18px -6px rgba(43,33,56,0.5);
+  }
+  .mic-btn:hover{ box-shadow: 0 10px 22px -6px rgba(43,33,56,0.6); }
+
+  .blow-btn{
+    background: transparent;
+    color: var(--cake-body-2);
+    border: 1.5px solid var(--card-edge);
+  }
+  .blow-btn:hover{ border-color: var(--cake-body); background: rgba(201,123,90,0.06); }
+
+  .hint{
+    font-size: 12px;
+    color: #A79BB8;
+    max-width: 320px;
+    margin-top: 4px;
+  }
+
+  /* Pesan setelah lilin padam -- awalnya tersembunyi */
+  .revealed{
+    display: none;
+    animation: fade-up 0.7s ease both;
+  }
+  .revealed.show{ display: block; }
+  @keyframes fade-up{
+    from{ opacity: 0; transform: translateY(14px); }
+    to{ opacity: 1; transform: translateY(0); }
+  }
+  .revealed p{
+    font-size: 15px;
+    line-height: 1.7;
+    color: #4A3F5C;
+    margin: 4px 0 0;
+  }
+  .revealed .again{
+    margin-top: 20px;
+    background: none;
+    border: none;
+    font-size: 13px;
+    color: var(--gold-deep);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  /* ==========================================================================
+     MINI-GAME: DECORATE THE CAKE
+     Drag toppings from the palette onto the cake using Pointer Events
+     (works for mouse and touch alike).
+     ========================================================================== */
+  .cake-game{ display: none; }
+  .cake-game.show{ display: block; animation: fade-up 0.6s ease both; }
+
+  .decorate-stage{
+    position: relative;
+    height: 220px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    margin-bottom: 10px;
+    touch-action: none; /* cegah scroll ikut ter-trigger saat drag di HP */
+  }
+  .deco-cake{
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .placed-topping{
+    position: absolute;
+    font-size: 22px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    animation: topping-pop 0.28s ease;
+  }
+  @keyframes topping-pop{
+    from{ transform: translate(-50%, -50%) scale(0); }
+    to{ transform: translate(-50%, -50%) scale(1); }
+  }
+
+  .cake-count{
+    font-size: 13px;
+    color: #8A7DA0;
+    margin: 0 0 12px;
+  }
+
+  .topping-palette{
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .topping-btn{
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    border: 1.5px solid var(--card-edge);
+    background: var(--card);
+    font-size: 20px;
+    cursor: grab;
+    touch-action: none;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+  }
+  .topping-btn:hover{ border-color: var(--cake-body); transform: translateY(-2px); }
+  .topping-btn:active{ cursor: grabbing; transform: scale(0.94); }
+
+  /* "Bayangan" topping yang mengikuti kursor/jari selagi di-drag */
+  .deco-ghost{
+    position: fixed;
+    font-size: 26px;
+    pointer-events: none;
+    z-index: 80;
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+
+  .row-actions{
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .pre-reveal.hide{ display: none; }
+
+  /* ==========================================================================
+     MINI-GAME: PECAHKAN BALON
+     Balon melayang naik di dalam panggung; tiap balon menyimpan satu
+     permohonan/wish yang muncul sebagai toast begitu balon diklik/tap.
+     ========================================================================== */
+  .balloon-game{ display: none; }
+  .balloon-game.show{ display: block; animation: fade-up 0.6s ease both; }
+
+  .game-title{
+    font-size: 14.5px;
+    font-weight: 600;
+    color: #4A3F5C;
+    margin: 0 0 14px;
+  }
+
+  .balloon-stage{
+    position: relative;
+    height: 260px;
+    overflow: hidden;
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.4), rgba(255,255,255,0));
+    margin-bottom: 14px;
+  }
+
+  .balloon{
+    position: absolute;
+    bottom: -70px; left: 0;
+    width: 44px; height: 54px;
+    background: var(--bcolor, var(--gold));
+    border-radius: 50% 50% 50% 50% / 58% 58% 42% 42%;
+    cursor: pointer;
+    box-shadow: inset -4px -6px 10px rgba(0,0,0,0.12), 0 6px 10px rgba(0,0,0,0.15);
+    will-change: transform;
+  }
+  .balloon:hover{ filter: brightness(1.06); }
+  .balloon::before{
+    /* simpul kecil di bawah balon */
+    content: "";
+    position: absolute;
+    left: 50%; bottom: -8px;
+    width: 0; height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 8px solid currentColor;
+    transform: translateX(-50%);
+  }
+  .balloon::after{
+    /* tali balon */
+    content: "";
+    position: absolute;
+    left: 50%; bottom: -46px;
+    width: 1px; height: 40px;
+    background: rgba(74,63,92,0.3);
+    transform: translateX(-50%);
+  }
+  .balloon .shine{
+    position: absolute;
+    top: 9px; left: 10px;
+    width: 10px; height: 14px;
+    background: rgba(255,255,255,0.55);
+    border-radius: 50%;
+    transform: rotate(-20deg);
+  }
+
+  .balloon-status{
+    font-size: 13px;
+    color: #8A7DA0;
+    margin: 0 0 14px;
+  }
+
+  /* Pecahan kecil yang terbang keluar saat balon meletus */
+  .burst-piece{
+    position: fixed;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 60;
+    animation: burst-fly 0.5s ease-out forwards;
+  }
+  @keyframes burst-fly{
+    to{ transform: translate(var(--bx), var(--by)) scale(0); opacity: 0; }
+  }
+
+  /* Bubble pesan/wish yang muncul di posisi balon lalu memudar ke atas */
+  .wish-toast{
+    position: fixed;
+    z-index: 60;
+    pointer-events: none;
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: #4A3F5C;
+    background: rgba(255,247,234,0.97);
+    border: 1px solid var(--card-edge);
+    padding: 8px 14px;
+    border-radius: 14px;
+    max-width: 220px;
+    text-align: center;
+    box-shadow: 0 12px 22px -10px rgba(0,0,0,0.35);
+    animation: toast-float 1.9s ease-out forwards;
+  }
+  @keyframes toast-float{
+    0%   { opacity: 0; transform: translate(-50%,-50%) translateY(0) scale(0.85); }
+    15%  { opacity: 1; transform: translate(-50%,-50%) translateY(-6px) scale(1); }
+    78%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%,-50%) translateY(-50px) scale(1); }
+  }
+
+  /* Kartu "bernapas" pelan saat pesta menyala, memberi kesan hangat/hidup */
+  body.party .card{
+    box-shadow:
+      0 30px 70px -18px rgba(232,181,77,0.25),
+      0 0 0 1px rgba(255,255,255,0.03);
+  }
+
+  @media (max-width: 380px){
+    .card{ padding: 32px 20px 28px; border-radius: 22px; }
+    .cake-wrap{ height: 170px; }
+  }
+
+  /* Hormati preferensi pengguna yang menonaktifkan animasi */
+  @media (prefers-reduced-motion: reduce){
+    .flame::before, .flame::after{ animation: none; }
+    .revealed{ animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stars" aria-hidden="true"></div>
+<canvas id="fireworks" aria-hidden="true"></canvas>
+
+<main class="card" role="main">
+
+  <span class="eyebrow">A Special Invitation</span>
+  <h1>Happy 20th Birthday,<br><em id="nameSlot">You</em>!</h1>
+  <p class="subtitle">Blow out the candles to unlock a little surprise 🎉</p>
+
+  <div class="pre-reveal" id="preReveal">
+    <div class="cake-wrap">
+      <div class="cake">
+        <!-- Lilin dibuat secara terprogram lewat JS agar jumlahnya mudah diatur -->
+        <div class="candles" id="candles"></div>
+        <div class="tier top">
+          <div class="frosting"></div>
+        </div>
+        <div class="tier">
+          <div class="frosting"></div>
+        </div>
+        <div class="plate"></div>
+      </div>
+    </div>
+
+    <p class="status" id="status">Tap the button, then blow toward your microphone</p>
+
+    <div class="actions">
+      <button class="mic-btn" id="micBtn" type="button">🎤 Enable Mic &amp; Blow</button>
+      <button class="blow-btn" id="blowBtn" type="button">💨 Blow Out Candles (no mic)</button>
+      <p class="hint">Needs HTTPS or localhost for mic access. No worries if permission is denied — use the button above.</p>
+    </div>
+  </div>
+
+  <section class="balloon-game" id="balloonGame">
+    <p class="game-title">Each balloon holds a secret wish — pop them all! 🎈</p>
+    <div class="balloon-stage" id="balloonStage"></div>
+    <p class="balloon-status" id="balloonStatus">0 / 0 balloons popped</p>
+    <button class="blow-btn" id="skipGameBtn" type="button">Skip &amp; go to message →</button>
+  </section>
+
+  <section class="cake-game" id="cakeGame">
+    <p class="game-title">Now decorate her cake — drag toppings onto it! 🎂</p>
+
+    <div class="decorate-stage" id="decorateStage">
+      <div class="deco-cake">
+        <div class="tier top"><div class="frosting"></div></div>
+        <div class="tier"><div class="frosting"></div></div>
+        <div class="plate"></div>
+      </div>
+    </div>
+
+    <p class="cake-count" id="decoCount">No toppings yet — drag one onto the cake!</p>
+
+    <div class="topping-palette" id="toppingPalette">
+      <button class="topping-btn" data-topping="🍒" type="button" aria-label="Cherry">🍒</button>
+      <button class="topping-btn" data-topping="🍓" type="button" aria-label="Strawberry">🍓</button>
+      <button class="topping-btn" data-topping="⭐" type="button" aria-label="Star">⭐</button>
+      <button class="topping-btn" data-topping="💖" type="button" aria-label="Heart">💖</button>
+      <button class="topping-btn" data-topping="✨" type="button" aria-label="Sparkle">✨</button>
+      <button class="topping-btn" data-topping="🕯️" type="button" aria-label="Candle">🕯️</button>
+    </div>
+
+    <div class="row-actions">
+      <button class="blow-btn" id="resetDecoBtn" type="button">Reset</button>
+      <button class="mic-btn" id="continueDecoBtn" type="button">Continue →</button>
+    </div>
+  </section>
+
+  <section class="revealed" id="revealed">
+    <h1 style="font-size: 26px;">🎂 Happy 20th, Sunanthana!</h1>
+    <p>
+      Twenty looks good on you. Whatever we were to each other, I'm genuinely
+      glad our paths crossed, and I hope this year brings you everything
+      you're quietly hoping for — good people around you, work that feels
+      worth doing, and plenty of reasons to laugh.
+    </p>
+    <p><strong>Happy birthday, Sunanthana na Suwan! 🎈</strong></p>
+    <p style="font-size:12.5px; color:#A79BB8; margin-top:14px;">✨ Click or tap anywhere to light up more fireworks</p>
+    <button class="again" id="againBtn" type="button">Relight the candles</button>
+  </section>
+
+</main>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ========================================================================
+     0. KONFIGURASI -- ubah sesuai kebutuhan
+     ======================================================================== */
+  const CONFIG = {
+    name: "Sunanthana na Suwan", // name shown in the card title
+    candleCount: 5,       // number of candles on the cake (visual count, not literal age)
+    blowThreshold: 0.16,  // volume threshold (0-1) counted as "blowing"
+    blowHoldMs: 260        // sound must stay above threshold this long (ms) before candles are out
+  };
+
+  document.getElementById("nameSlot").textContent = CONFIG.name;
+
+  /* ========================================================================
+     1. RENDER LILIN
+     ======================================================================== */
+  const candlesEl = document.getElementById("candles");
+  for (let i = 0; i < CONFIG.candleCount; i++){
+    const candle = document.createElement("div");
+    candle.className = "candle";
+    candle.innerHTML = `
+      <div class="wick"></div>
+      <div class="flame"></div>
+      <div class="smoke"></div>
+    `;
+    candlesEl.appendChild(candle);
+  }
+
+  const statusEl   = document.getElementById("status");
+  const micBtn     = document.getElementById("micBtn");
+  const blowBtn    = document.getElementById("blowBtn");
+  const preReveal   = document.getElementById("preReveal");
+  const revealedEl  = document.getElementById("revealed");
+  const againBtn    = document.getElementById("againBtn");
+  const balloonGameEl = document.getElementById("balloonGame");
+  const balloonStage  = document.getElementById("balloonStage");
+  const balloonStatus = document.getElementById("balloonStatus");
+  const skipGameBtn   = document.getElementById("skipGameBtn");
+  const cakeGameEl     = document.getElementById("cakeGame");
+  const decorateStage  = document.getElementById("decorateStage");
+  const toppingPalette = document.getElementById("toppingPalette");
+  const resetDecoBtn   = document.getElementById("resetDecoBtn");
+  const continueDecoBtn= document.getElementById("continueDecoBtn");
+  const decoCount       = document.getElementById("decoCount");
+
+  let candlesOut = false; // flag supaya proses "tiup" hanya berjalan satu kali
+
+  /* ========================================================================
+     2. LOGIKA WEB AUDIO API -- deteksi tiupan lewat mikrofon
+     ======================================================================== */
+  let audioCtx, analyser, micStream, rafId;
+  let overThresholdSince = null; // timestamp saat volume mulai melewati ambang batas
+
+  async function enableMicAndListen(){
+    statusEl.textContent = "Requesting microphone access...";
+    try{
+      // Minta akses mikrofon ke pengguna
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Buat audio graph: mic -> AnalyserNode, tanpa disambungkan ke speaker
+      // (jadi tidak akan ada feedback/echo terdengar)
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(micStream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512; // resolusi cukup untuk membaca amplitudo, tak perlu detail frekuensi tinggi
+      source.connect(analyser);
+
+      micBtn.textContent = "🎧 Mic active — blow now!";
+      micBtn.disabled = true;
+      statusEl.textContent = "Listening... blow gently toward the mic.";
+      statusEl.classList.add("active");
+
+      monitorVolume();
+    } catch (err){
+      // Izin ditolak / tidak ada mikrofon / bukan secure context, dsb.
+      console.warn("Mic access failed:", err);
+      statusEl.textContent = "Microphone unavailable — use the 'Blow Out Candles' button instead.";
+    }
+  }
+
+  // Loop yang membaca volume rata-rata dari analyser setiap frame
+  function monitorVolume(){
+    const data = new Uint8Array(analyser.fftSize);
+
+    function tick(){
+      if (candlesOut) return; // hentikan loop begitu lilin sudah padam
+
+      analyser.getByteTimeDomainData(data);
+
+      // Hitung RMS (root-mean-square) dari gelombang audio sebagai perkiraan volume.
+      // Nilai byte 128 = hening (baseline); semakin jauh dari 128, semakin keras.
+      let sumSquares = 0;
+      for (let i = 0; i < data.length; i++){
+        const normalized = (data[i] - 128) / 128; // rentang kira-kira -1..1
+        sumSquares += normalized * normalized;
+      }
+      const rms = Math.sqrt(sumSquares / data.length); // 0 (hening) .. ~1 (sangat keras)
+
+      if (rms > CONFIG.blowThreshold){
+        // Volume melewati ambang batas: mulai/ lanjutkan penghitung waktu
+        if (overThresholdSince === null) overThresholdSince = performance.now();
+        const heldFor = performance.now() - overThresholdSince;
+
+        if (heldFor >= CONFIG.blowHoldMs){
+          blowOutCandles(); // tiupan cukup panjang & keras -> anggap lilin ditiup
+          return;
+        }
+      } else {
+        overThresholdSince = null; // suara mereda, reset penghitung
+      }
+
+      rafId = requestAnimationFrame(tick);
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function stopMic(){
+    if (rafId) cancelAnimationFrame(rafId);
+    if (micStream) micStream.getTracks().forEach(track => track.stop());
+    if (audioCtx && audioCtx.state !== "closed") audioCtx.close();
+  }
+
+  /* ========================================================================
+     3. PADAMKAN LILIN (dipicu oleh mikrofon ATAU tombol fallback)
+     ======================================================================== */
+  function blowOutCandles(){
+    if (candlesOut) return;
+    candlesOut = true;
+
+    document.querySelectorAll(".candle").forEach((c, i) => {
+      setTimeout(() => c.classList.add("out"), i * 90); // padam bergantian, terasa natural
+    });
+
+    statusEl.textContent = "Candles out! Making a wish...";
+    stopMic();
+
+    setTimeout(goToBalloonGame, 700);
+  }
+
+  micBtn && micBtn.addEventListener("click", enableMicAndListen);
+  blowBtn.addEventListener("click", blowOutCandles);
+
+  /* ========================================================================
+     3.5 MINI-GAME: PECAHKAN BALON
+     Setiap balon menyimpan satu permohonan/wish tersembunyi. Balon melayang
+     naik dengan lintasan diperbarui lewat requestAnimationFrame (bukan CSS
+     animation) supaya posisi klik selalu akurat dan mudah "dibekukan" saat
+     balon diklik.
+     ======================================================================== */
+  const WISHES = [
+    "Wishing you health and happiness all year long 🌿",
+    "May good things keep finding their way to you 💫",
+    "Stay the warm, easy-to-love person you are 🤍",
+    "May your big plans for this year actually happen 🚀",
+    "Surrounded by people who genuinely have your back 🫶",
+    "Here's to a year full of laughter and sweet surprises 🎊"
+  ];
+
+  let balloonObjs = [];
+  let balloonAnimId = null;
+  let balloonsPopped = 0;
+
+  function goToBalloonGame(){
+    document.body.classList.add("party"); // gelapkan panggung, nyalakan bintang
+    preReveal.classList.add("hide");
+    balloonGameEl.classList.add("show");
+    spawnBalloons();
+  }
+
+  function spawnBalloons(){
+    balloonStage.innerHTML = "";
+    balloonObjs = [];
+    balloonsPopped = 0;
+    updateBalloonStatus();
+
+    WISHES.forEach((wish, i) => {
+      const el = document.createElement("div");
+      el.className = "balloon";
+      const color = COLORS[i % COLORS.length];
+      el.style.setProperty("--bcolor", color);
+      el.style.color = color; // dipakai simpul balon (currentColor)
+      el.innerHTML = '<span class="shine"></span>';
+
+      const obj = {
+        el, wish,
+        x: 6 + Math.random() * 80,               // posisi horizontal tetap (%)
+        y: -60 - Math.random() * 240,             // mulai di bawah panggung, staggered
+        speed: 0.34 + Math.random() * 0.22,       // kecepatan naik (px/frame) -- sedikit dipercepat
+        sway: 12 + Math.random() * 14,            // amplitudo goyangan kiri-kanan
+        swayFreq: 0.014 + Math.random() * 0.012,
+        phase: Math.random() * Math.PI * 2,
+        popped: false
+      };
+      el.style.left = obj.x + "%";
+      el.addEventListener("click", () => popBalloon(obj));
+      balloonStage.appendChild(el);
+      balloonObjs.push(obj);
+    });
+
+    if (balloonAnimId) cancelAnimationFrame(balloonAnimId);
+    animateBalloons();
+  }
+
+  // Loop rAF yang menggerakkan semua balon setiap frame
+  function animateBalloons(){
+    const stageHeight = balloonStage.clientHeight;
+    let frame = 0;
+
+    function tick(){
+      frame++;
+      balloonObjs.forEach(obj => {
+        if (obj.popped) return;
+        obj.y += obj.speed;
+        if (obj.y > stageHeight + 60){
+          obj.y = -60 - Math.random() * 80; // balon lolos ke atas -> muncul lagi dari bawah
+        }
+        const sway = Math.sin(frame * obj.swayFreq + obj.phase) * obj.sway;
+        obj.el.style.transform = `translate(${sway}px, ${-obj.y}px) rotate(${sway / 6}deg)`;
+      });
+      balloonAnimId = requestAnimationFrame(tick);
+    }
+    tick();
+  }
+
+  function popBalloon(obj){
+    if (obj.popped || balloonsPopped >= WISHES.length) return;
+    obj.popped = true;
+    balloonsPopped++;
+
+    // Ambil posisi balon di layar SEBELUM dihapus, untuk menaruh efek & toast
+    const rect = obj.el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+
+    spawnBurst(cx, cy, getComputedStyle(obj.el).getPropertyValue("--bcolor").trim() || "#E8B54D");
+    spawnWishToast(cx, cy, obj.wish);
+
+    obj.el.remove();
+    updateBalloonStatus();
+
+    if (balloonsPopped === WISHES.length){
+      cancelAnimationFrame(balloonAnimId);
+      setTimeout(finishBalloonGame, 1500);
+    }
+  }
+
+  function updateBalloonStatus(){
+    balloonStatus.textContent = `${balloonsPopped} / ${WISHES.length} balloons popped`;
+  }
+
+  // Semburan pecahan kecil, murni div + CSS keyframe, senada dengan warna balon
+  function spawnBurst(x, y, color){
+    const pieceCount = 10;
+    for (let i = 0; i < pieceCount; i++){
+      const p = document.createElement("div");
+      p.className = "burst-piece";
+      const angle = ((Math.PI * 2) / pieceCount) * i + Math.random() * 0.4;
+      const dist = 24 + Math.random() * 18;
+      p.style.setProperty("--bx", Math.cos(angle) * dist + "px");
+      p.style.setProperty("--by", Math.sin(angle) * dist + "px");
+      p.style.left = x + "px";
+      p.style.top = y + "px";
+      p.style.background = color;
+      document.body.appendChild(p);
+      setTimeout(() => p.remove(), 550);
+    }
+  }
+
+  function spawnWishToast(x, y, text){
+    const t = document.createElement("div");
+    t.className = "wish-toast";
+    t.textContent = text;
+    t.style.left = x + "px";
+    t.style.top = y + "px";
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1950);
+  }
+
+  function finishBalloonGame(){
+    balloonGameEl.classList.remove("show");
+    setTimeout(goToCakeGame, 350);
+  }
+
+  skipGameBtn.addEventListener("click", () => {
+    if (balloonAnimId) cancelAnimationFrame(balloonAnimId);
+    finishBalloonGame();
+  });
+
+  /* ========================================================================
+     3.7 MINI-GAME: DECORATE THE CAKE
+     Drag-and-drop implemented with Pointer Events (not the native HTML5
+     Drag & Drop API), because Pointer Events behave consistently across
+     mouse AND touch, which the native DnD API does not on mobile.
+     ======================================================================== */
+  let toppingsPlaced = 0;
+
+  function goToCakeGame(){
+    cakeGameEl.classList.add("show");
+  }
+
+  function updateDecoCount(){
+    decoCount.textContent = toppingsPlaced === 0
+      ? "No toppings yet — drag one onto the cake!"
+      : `${toppingsPlaced} topping${toppingsPlaced > 1 ? "s" : ""} added 🎉`;
+  }
+
+  function resetCake(){
+    decorateStage.querySelectorAll(".placed-topping").forEach(el => el.remove());
+    toppingsPlaced = 0;
+    updateDecoCount();
+  }
+  resetDecoBtn.addEventListener("click", resetCake);
+
+  continueDecoBtn.addEventListener("click", () => {
+    cakeGameEl.classList.remove("show");
+    setTimeout(startParty, 300);
+  });
+
+  // Mulai drag saat salah satu tombol topping ditekan
+  toppingPalette.querySelectorAll(".topping-btn").forEach(btn => {
+    btn.addEventListener("pointerdown", (e) => startToppingDrag(e, btn.dataset.topping));
+  });
+
+  function startToppingDrag(e, emoji){
+    e.preventDefault();
+
+    // Elemen "bayangan" yang mengikuti kursor/jari selama drag berlangsung
+    const ghost = document.createElement("div");
+    ghost.className = "deco-ghost";
+    ghost.textContent = emoji;
+    document.body.appendChild(ghost);
+    positionGhost(e.clientX, e.clientY);
+
+    function positionGhost(x, y){
+      ghost.style.left = x + "px";
+      ghost.style.top = y + "px";
+    }
+
+    function onMove(ev){
+      positionGhost(ev.clientX, ev.clientY);
+    }
+
+    function onUp(ev){
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      ghost.remove();
+
+      // Hanya tempel topping kalau posisi lepas jari/kursor berada di atas panggung kue
+      const stageRect = decorateStage.getBoundingClientRect();
+      const insideStage =
+        ev.clientX >= stageRect.left && ev.clientX <= stageRect.right &&
+        ev.clientY >= stageRect.top  && ev.clientY <= stageRect.bottom;
+
+      if (insideStage){
+        placeTopping(emoji, ev.clientX - stageRect.left, ev.clientY - stageRect.top);
+      }
+    }
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  }
+
+  function placeTopping(emoji, x, y){
+    const t = document.createElement("div");
+    t.className = "placed-topping";
+    t.textContent = emoji;
+    t.style.left = x + "px";
+    t.style.top = y + "px";
+    decorateStage.appendChild(t);
+    toppingsPlaced++;
+    updateDecoCount();
+  }
+
+  /* ========================================================================
+     4. TRANSISI KE MODE "PESTA" + TAMPILKAN PESAN UTAMA
+     ======================================================================== */
+  function startParty(){
+    document.body.classList.add("party");
+    balloonGameEl.classList.remove("show");
+    cakeGameEl.classList.remove("show");
+    revealedEl.classList.add("show");
+    launchFireworksShow();
+  }
+
+  againBtn.addEventListener("click", () => window.location.reload());
+
+  /* ========================================================================
+     5. KEMBANG API -- HTML5 Canvas murni, tanpa library eksternal
+     ======================================================================== */
+  const canvas = document.getElementById("fireworks");
+  const ctx = canvas.getContext("2d");
+  const COLORS = ["#E8B54D", "#FF6F59", "#2FBF9F", "#E85B9A", "#FFF4CC"];
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  let particles = [];
+  let fireworksRunning = false;
+
+  function resizeCanvas(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener("resize", resizeCanvas);
+  resizeCanvas();
+
+  // Satu partikel = satu percikan kecil dari ledakan kembang api
+  class Particle{
+    constructor(x, y, color){
+      this.x = x;
+      this.y = y;
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2 + Math.random() * 5;
+      this.vx = Math.cos(angle) * speed;
+      this.vy = Math.sin(angle) * speed;
+      this.color = color;
+      this.alpha = 1;
+      this.gravity = 0.045;
+      this.drag = 0.985; // gesekan udara, memperlambat partikel seiring waktu
+      this.size = 1.5 + Math.random() * 1.8;
+      this.decay = 0.011 + Math.random() * 0.012;
+    }
+    update(){
+      this.vx *= this.drag;
+      this.vy *= this.drag;
+      this.vy += this.gravity;
+      this.x += this.vx;
+      this.y += this.vy;
+      this.alpha -= this.decay;
+    }
+    draw(){
+      ctx.globalAlpha = Math.max(this.alpha, 0);
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      ctx.fillStyle = this.color;
+      ctx.fill();
+    }
+  }
+
+  // Membuat satu ledakan berisi banyak partikel dari satu titik
+  function explode(x, y){
+    const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+    const count = reducedMotion ? 22 : 55;
+    for (let i = 0; i < count; i++){
+      particles.push(new Particle(x, y, color));
+    }
+  }
+
+  // Roket kecil yang meluncur dari dasar layar menuju titik ledakan.
+  // Jejaknya terbentuk otomatis lewat trail semi-transparan di fireworksLoop().
+  class Rocket{
+    constructor(targetX, targetY){
+      this.x = targetX;
+      this.y = canvas.height + 10; // mulai dari luar layar, bagian bawah
+      this.targetY = targetY;
+      this.vy = -(8.5 + Math.random() * 3); // kecepatan naik
+      this.wobble = (Math.random() - 0.5) * 0.6; // sedikit melenceng ke kiri/kanan
+      this.color = COLORS[Math.floor(Math.random() * COLORS.length)];
+    }
+    update(){
+      this.y += this.vy;
+      this.x += this.wobble;
+    }
+    draw(){
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, 2.4, 0, Math.PI * 2);
+      ctx.fillStyle = this.color;
+      ctx.shadowColor = this.color;
+      ctx.shadowBlur = 10;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    reachedTarget(){
+      return this.y <= this.targetY;
+    }
+  }
+
+  let rockets = [];
+
+  // Titik masuk baru: luncurkan roket dari bawah, baru meledak begitu sampai target
+  function launchFirework(x, y){
+    rockets.push(new Rocket(x, y));
+  }
+
+  function fireworksLoop(){
+    if (!fireworksRunning) return;
+
+    // Efek jejak/trail lembut: "hapus" sedikit demi sedikit ke arah transparan
+    // (bukan menimpa dengan hitam opak) supaya canvas TIDAK pernah menjadi
+    // solid dan menutupi kartu di belakangnya, walau dibiarkan berjalan lama.
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalCompositeOperation = "source-over";
+
+    // Roket yang masih meluncur naik menuju titik ledakannya
+    rockets.forEach(r => { r.update(); r.draw(); });
+    rockets = rockets.filter(r => {
+      if (r.reachedTarget()){
+        explode(r.x, r.y); // sampai target -> pecah jadi partikel
+        return false;
+      }
+      return true;
+    });
+
+    particles.forEach(p => { p.update(); p.draw(); });
+    particles = particles.filter(p => p.alpha > 0 && p.y < canvas.height + 50);
+
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(fireworksLoop);
+  }
+
+  let launchTimer = null;
+  function launchFireworksShow(){
+    fireworksRunning = true;
+    fireworksLoop();
+
+    // Ledakan pertama langsung di tengah layar, disusul ledakan acak berkala
+    launchFirework(canvas.width / 2, canvas.height * 0.4);
+
+    const interval = reducedMotion ? 1400 : 750;
+    launchTimer = setInterval(() => {
+      const x = canvas.width * (0.2 + Math.random() * 0.6);
+      const y = canvas.height * (0.2 + Math.random() * 0.45);
+      launchFirework(x, y);
+    }, interval);
+
+    // Hentikan gelombang peluncuran otomatis setelah beberapa saat,
+    // tapi biarkan partikel yang masih ada memudar secara alami.
+    setTimeout(() => clearInterval(launchTimer), 9000);
+
+    enableClickToExplode();
+  }
+
+  // 6. INTERAKSI KLIK -- setiap klik/tap di layar meluncurkan roket baru
+  //    menuju posisi kursor, selama mode pesta (fireworksRunning) aktif.
+  //    Listener dipasang di document, bukan canvas, supaya tetap berfungsi
+  //    walau klik jatuh di atas kartu atau elemen lain (canvas pointer-events: none).
+  function enableClickToExplode(){
+    function handlePointer(e){
+      if (!fireworksRunning) return;
+      // Dukung mouse (clientX/Y) maupun sentuhan (touches[0])
+      const point = e.touches ? e.touches[0] : e;
+      launchFirework(point.clientX, point.clientY);
+    }
+    document.addEventListener("click", handlePointer);
+    document.addEventListener("touchstart", handlePointer, { passive: true });
+  }
+
+})();
+</script>
+</body>
+</html>
